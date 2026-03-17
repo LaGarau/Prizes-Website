@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "git": "^0.1.5",
+    "maplibre-gl": "^5.20.1",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3"
