@@ -3,7 +3,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import styles from './YuwaCamera.module.css';
-import { processAndCapture } from './cameralogic';
+import { processAndCapture, saveToPhoneGallery } from './cameralogic';
 
 import Mascot1 from "./Excited.png";
 import Mascot2 from "./Posing.png";
@@ -34,7 +34,10 @@ export default function YuwaTravelCamera() {
   const [isDragging, setIsDragging] = useState(false);
   const [isFront, setIsFront] = useState(false); 
   const [flash, setFlash] = useState(false);
-  const [captured, setCaptured] = useState<string | null>(null);
+  
+  // States to handle the captured image
+  const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const startCamera = async () => {
     if (videoRef.current?.srcObject) {
@@ -55,8 +58,8 @@ export default function YuwaTravelCamera() {
   };
 
   useEffect(() => {
-    startCamera();
-  }, [isFront, captured === null]);
+    if (!previewUrl) startCamera();
+  }, [isFront, previewUrl]);
 
   const handleMove = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     if (!isDragging || !containerRef.current) return;
@@ -71,44 +74,58 @@ export default function YuwaTravelCamera() {
   }, [isDragging]);
 
   const handleCapture = async () => {
-    if (!videoRef.current || !canvasRef.current || !containerRef.current) return;
+    if (!videoRef.current || !canvasRef.current) return;
     setFlash(true);
 
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
     const stickerImg = document.getElementById('active-sticker') as HTMLImageElement;
     
-    const dataUrl = await processAndCapture(
-      video,
-      canvas,
+    const blob = await processAndCapture(
+      videoRef.current,
+      canvasRef.current,
       stickerImg,
       { x: pos.x, y: pos.y, size, rotation, aspectRatio, isFront }
     );
     
-    setCaptured(dataUrl);
+    if (blob) {
+      setCapturedBlob(blob);
+      setPreviewUrl(URL.createObjectURL(blob)); // Safe string for <img> src
+    }
+    
     setTimeout(() => setFlash(false), 300);
   };
 
-  if (captured) {
+  const handleRetake = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setCapturedBlob(null);
+    setPreviewUrl(null);
+  };
+
+  const handleSave = async () => {
+    if (capturedBlob) {
+      await saveToPhoneGallery(capturedBlob);
+    }
+  };
+
+  // --- RESULT VIEW ---
+  if (previewUrl) {
     return (
       <div className={styles.camRoot}>
-        <img src={captured} className={styles.resultPreview} alt="Captured" />
+        <img src={previewUrl} className={styles.resultPreview} alt="Captured" />
         <div className={styles.resultActions}>
-          <a href={captured} download="yuwa_memory.png" className={styles.saveBtn}>Save Memory</a>
-          <button onClick={() => setCaptured(null)} className={styles.retakeBtn}>Retake</button>
+          <button onClick={handleSave} className={styles.saveBtn}>Save Memory</button>
+          <button onClick={handleRetake} className={styles.retakeBtn}>Retake</button>
         </div>
       </div>
     );
   }
 
+  // --- CAMERA VIEW ---
   return (
     <div className={styles.camRoot}>
       <header className={styles.header}>
         <h1 className={styles.title}>Ghumante Yuwa</h1>
         <div className={styles.headerTools}>
-          <button onClick={() => setIsFront(!isFront)} className={styles.iconBtn}>
-             🔄
-          </button>
+          <button onClick={() => setIsFront(!isFront)} className={styles.iconBtn}>🔄</button>
           <div className={styles.ratioSelector}>
             {(['portrait', 'landscape', 'square'] as AspectRatio[]).map(r => (
               <button key={r} className={aspectRatio === r ? styles.ratioActive : ''} onClick={() => setAspectRatio(r)}>
@@ -129,12 +146,7 @@ export default function YuwaTravelCamera() {
         onTouchStart={() => setIsDragging(true)}
         onTouchEnd={() => setIsDragging(false)}
       >
-        <video 
-          ref={videoRef} 
-          autoPlay 
-          playsInline 
-          className={`${styles.video} ${isFront ? styles.mirrored : ''}`} 
-        />
+        <video ref={videoRef} autoPlay playsInline className={`${styles.video} ${isFront ? styles.mirrored : ''}`} />
         <div className={`${styles.flash} ${flash ? styles.flashActive : ''}`} />
         
         <div 
@@ -146,13 +158,7 @@ export default function YuwaTravelCamera() {
             transform: `translate(-50%, -50%) rotate(${rotation}deg)` 
           }}
         >
-          <Image 
-            id="active-sticker"
-            src={activeSticker.src} 
-            alt="sticker" 
-            draggable={false}
-            style={{ width: '100%', height: 'auto' }}
-          />
+          <Image id="active-sticker" src={activeSticker.src} alt="sticker" draggable={false} style={{ width: '100%', height: 'auto' }} />
         </div>
       </div>
 
